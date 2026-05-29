@@ -148,6 +148,35 @@ def inject_styles() -> None:
                 white-space: pre-wrap;
             }
 
+            .response-list {
+                display: flex;
+                flex-direction: column;
+                gap: 0.7rem;
+            }
+
+            .response-item {
+                background: #f9fafc;
+                border: 1px solid #e3e8f0;
+                border-radius: 8px;
+                padding: 0.8rem 0.85rem;
+            }
+
+            .response-key {
+                color: var(--text-muted);
+                font-size: 0.72rem;
+                font-weight: 800;
+                letter-spacing: 0.05em;
+                text-transform: uppercase;
+            }
+
+            .response-value {
+                color: var(--text-main);
+                font-size: 0.94rem;
+                line-height: 1.65;
+                margin-top: 0.35rem;
+                overflow-wrap: anywhere;
+            }
+
             .empty-box {
                 align-items: center;
                 border: 1px dashed #bbc5d4;
@@ -236,6 +265,26 @@ def safe_text(value: object) -> str:
 
 def line_breaks(value: str) -> str:
     return safe_text(value).replace("\n", "<br>")
+
+
+def response_value_html(value: object) -> str:
+    if isinstance(value, list):
+        return safe_text(", ".join(str(item) for item in value) if value else "[]")
+    if isinstance(value, dict):
+        return html.escape(json.dumps(value, indent=2, ensure_ascii=False)).replace("\n", "<br>")
+    return line_breaks(str(value or ""))
+
+
+def response_items_html(result: dict) -> str:
+    return "".join(
+        f"""
+        <div class="response-item">
+            <div class="response-key">{safe_text(key)}</div>
+            <div class="response-value">{response_value_html(value)}</div>
+        </div>
+        """
+        for key, value in result.items()
+    )
 
 
 def render_hero() -> None:
@@ -342,7 +391,7 @@ def render_response_panel(result: dict | None) -> None:
     except (TypeError, ValueError):
         confidence_text = safe_text(confidence)
 
-    json_text = html.escape(json.dumps(result, indent=2, ensure_ascii=False))
+    response_items = response_items_html(result)
     st.markdown(
         f"""
         <div class="panel">
@@ -357,7 +406,7 @@ def render_response_panel(result: dict | None) -> None:
                     <div class="meta-value">{safe_text(result.get("reason", "No reason returned."))}</div>
                 </div>
             </div>
-            <pre class="json-box">{json_text}</pre>
+            <div class="response-list">{response_items}</div>
         </div>
         """,
         unsafe_allow_html=True,
