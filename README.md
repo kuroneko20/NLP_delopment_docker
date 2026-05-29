@@ -1,38 +1,30 @@
 # Banking AI-Agent Microservice
 
-## Video demo: https://drive.google.com/file/d/19xXnEonvF9thZNYr2hs-eiu2aaH55acJ/view?usp=sharing
+## Video demo
+
+Link demo: https://drive.google.com/file/d/19xXnEonvF9thZNYr2hs-eiu2aaH55acJ/view?usp=sharing
 
 ### Thông tin sinh viên
 
-- Họ và tên: `<Nguyễn Trịnh Quang>`
-- MSSV: `<23120345>`
+- Họ và tên: `Nguyễn Trịnh Quang`
+- MSSV: `23120345`
 
 ---
 
 ## 1. Tổng quan project
 
-Project triển khai **Banking AI-Agent** theo kiến trúc microservice, sử dụng:
+Project triển khai **Banking AI-Agent** theo kiến trúc microservice.
 
-- FastAPI cho API Gateway.
-- gRPC cho Intent Service.
-- Streamlit cho frontend.
-- Ollama cho AI response generation.
-- Docker Compose để chạy toàn bộ hệ thống.
-
-Hệ thống vẫn demo được khi Ollama không khả dụng nhờ fallback rule-based intent classifier và fallback draft response.
-
----
-
-## 2. Thành phần hệ thống
+Hệ thống gồm:
 
 | Service | Công nghệ | Vai trò | Port |
 |---|---|---|---|
-| `backend` | FastAPI + Uvicorn | API Gateway, điều phối workflow | `8000` |
-| `intent-service` | Python gRPC | Nhận diện intent | `50051` |
-| `frontend` | Streamlit | Giao diện người dùng | `8501` |
-| Ollama | HTTP API | Sinh phản hồi AI | `11434` nếu chạy local |
+| `frontend` | Streamlit | Giao diện nhập message và hiển thị kết quả | `8501` |
+| `backend` | FastAPI + Uvicorn | API Gateway, điều phối workflow agent | `8000` |
+| `intent-service` | Python gRPC | Nhận diện intent từ message | `50051` |
+| `Ollama` | HTTP API | Sinh phản hồi AI | `11434` nếu chạy local |
 
-Endpoint backend:
+Backend có các endpoint chính:
 
 ```txt
 GET  /health
@@ -40,35 +32,55 @@ GET  /config
 POST /run-agent
 ```
 
+Hệ thống vẫn chạy demo được nếu Ollama không khả dụng vì có fallback rule-based intent classifier và fallback draft response.
+
 ---
 
-## 3. Luồng xử lý
+## 2. Luồng chạy của project
+
+### 2.1. Luồng tổng thể
 
 ```txt
-User Message
-    ↓
-Frontend Streamlit
-    ↓ HTTP
-FastAPI Backend /run-agent
-    ↓ gRPC
+User
+ ↓
+Streamlit Frontend
+ http://localhost:8501
+ ↓ HTTP
+FastAPI Backend
+ http://backend:8000 hoặc http://localhost:8000 từ máy host
+ ↓ gRPC
 Intent Service
-    ↓
-Priority Node
-    ↓
-Policy Node
-    ↓
-Validation Node
-    ↓
-Router Node
-    ↓
-Draft Node
-    ↓ HTTP
-Ollama /api/chat hoặc /api/generate
-    ↓
+ intent-service:50051
+ ↓
+Agent Workflow Nodes
+ priority → policy → validation → router → draft
+ ↓ HTTP
+Ollama
+ OLLAMA_BASE_URL
+ ↓
 Structured JSON Response
 ```
 
-Response chính:
+### 2.2. Luồng xử lý `/run-agent`
+
+```txt
+1. User nhập message trên frontend hoặc gọi API trực tiếp.
+2. Frontend gửi HTTP request tới backend `/run-agent`.
+3. Backend gọi intent-service qua gRPC để lấy:
+   - intent
+   - confidence
+   - reason
+4. Backend chạy các node còn lại:
+   - priority_node: xác định mức ưu tiên.
+   - policy_node: lấy policy phù hợp với intent.
+   - validation_node: kiểm tra thông tin còn thiếu.
+   - router_node: chọn hành động tiếp theo.
+   - draft_node: tạo draft reply.
+5. Draft node gọi Ollama qua HTTP nếu Ollama khả dụng.
+6. Backend trả về JSON cuối cùng cho frontend hoặc API caller.
+```
+
+Output chính:
 
 ```json
 {
@@ -87,7 +99,7 @@ Response chính:
 
 ---
 
-## 4. Cấu trúc thư mục
+## 3. Cấu trúc thư mục
 
 ```txt
 banking-service/
@@ -131,11 +143,11 @@ banking-service/
 └── README.md
 ```
 
-Các file trong `original_files/` là template gốc và không dùng để chạy trực tiếp.
+Các file trong `original_files/` là file template gốc, được giữ nguyên và không dùng để chạy trực tiếp.
 
 ---
 
-## 5. Yêu cầu cài đặt
+## 4. Yêu cầu cài đặt
 
 Bắt buộc:
 
@@ -145,21 +157,21 @@ Bắt buộc:
 
 Tùy chọn:
 
-- Ollama local nếu muốn AI response thật.
+- Ollama local nếu muốn sinh phản hồi AI thật.
 - Google Colab + Pinggy nếu máy local yếu.
-- Python 3.10+ nếu chạy service thủ công ngoài Docker.
+- Python 3.10+ nếu muốn chạy service thủ công ngoài Docker.
 
 ---
 
-## 6. Cấu hình môi trường
+## 5. Cấu hình môi trường
 
-Copy file mẫu:
+Copy file cấu hình mẫu:
 
 ```powershell
 copy .env.example .env
 ```
 
-Cấu hình mặc định cho Ollama local:
+Cấu hình mặc định khi chạy Ollama local trên máy host:
 
 ```env
 OLLAMA_BASE_URL=http://host.docker.internal:11434
@@ -190,7 +202,9 @@ OLLAMA_BASE_URL=https://xxxxx.a.free.pinggy.link/api/chat
 
 ---
 
-## 7. Chạy project bằng Docker Compose
+## 6. Cách chạy project
+
+### 6.1. Chạy nhanh bằng Docker Compose
 
 Tại thư mục root project:
 
@@ -198,14 +212,14 @@ Tại thư mục root project:
 docker compose up --build
 ```
 
-Sau khi chạy thành công, mở:
+Sau khi chạy thành công, truy cập:
 
 ```txt
 Frontend: http://localhost:8501
 Backend:  http://localhost:8000
 ```
 
-Không dùng các URL sau để mở trình duyệt:
+Không mở bằng:
 
 ```txt
 http://0.0.0.0:8501
@@ -214,13 +228,9 @@ http://0.0.0.0:8000
 
 `0.0.0.0` chỉ là địa chỉ bind bên trong container.
 
----
+### 6.2. Chạy với Ollama local
 
-## 8. Chạy Ollama
-
-### 8.1. Ollama local
-
-Chạy trên máy host:
+Mở terminal riêng trên máy host:
 
 ```powershell
 ollama serve
@@ -233,15 +243,27 @@ Test Ollama:
 curl.exe http://localhost:11434/api/tags
 ```
 
-Với Docker, dùng:
+Sau đó chạy project:
+
+```powershell
+docker compose up --build
+```
+
+Trong Docker, service phải dùng:
 
 ```env
 OLLAMA_BASE_URL=http://host.docker.internal:11434
 ```
 
-Không dùng `http://localhost:11434` trong container.
+Không dùng:
 
-### 8.2. Ollama bằng Colab + Pinggy
+```env
+OLLAMA_BASE_URL=http://localhost:11434
+```
+
+vì `localhost` bên trong container là chính container đó.
+
+### 6.3. Chạy với Ollama trên Colab + Pinggy
 
 Dùng khi máy local không đủ tài nguyên.
 
@@ -270,7 +292,7 @@ Pull model:
 !ollama pull gpt-oss:20b
 ```
 
-Tạo tunnel:
+Tạo tunnel Pinggy:
 
 ```python
 !ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -p 443 -R0:localhost:11434 qr@a.pinggy.io
@@ -283,13 +305,20 @@ OLLAMA_BASE_URL=https://xxxxx.a.free.pinggy.link
 INTENT_MODEL_NAME=gpt-oss:20b
 ```
 
-Nếu Colab yếu, dùng model nhẹ hơn:
+Sau đó chạy lại project local:
+
+```powershell
+docker compose down
+docker compose up --build --force-recreate
+```
+
+Nếu Colab không đủ tài nguyên, dùng model nhẹ hơn:
 
 ```python
 !ollama pull llama3.2:3b
 ```
 
-và sửa:
+và đổi `.env`:
 
 ```env
 INTENT_MODEL_NAME=llama3.2:3b
@@ -297,16 +326,16 @@ INTENT_MODEL_NAME=llama3.2:3b
 
 ---
 
-## 9. Test hệ thống
+## 7. Test hệ thống
 
-### 9.1. Test backend
+### 7.1. Test backend
 
 ```powershell
 curl.exe http://localhost:8000/health
 curl.exe http://localhost:8000/config
 ```
 
-### 9.2. Test workflow `/run-agent`
+### 7.2. Test workflow `/run-agent`
 
 Khuyến nghị dùng `Invoke-RestMethod` trên PowerShell:
 
@@ -322,17 +351,15 @@ Invoke-RestMethod `
   -Body $body
 ```
 
-Không gọi `/run-agent` qua port `8501`, vì `8501` là frontend.
+Không gọi `/run-agent` qua port `8501`, vì `8501` là frontend Streamlit.
 
-### 9.3. Test gRPC intent-service
+### 7.3. Test gRPC intent-service
 
 ```powershell
 docker compose exec intent-service python client.py "I lost my card and need urgent support"
 ```
 
----
-
-## 10. Generate gRPC code
+### 7.4. Generate lại gRPC code
 
 Trong container:
 
@@ -355,13 +382,11 @@ intent_service_pb2_grpc.py
 
 ---
 
-## 11. Troubleshooting
+## 8. Troubleshooting ngắn
 
-### 11.1. Frontend build lỗi `IncompleteRead`
+### Frontend build lỗi `IncompleteRead`
 
-Lỗi này do mạng khi pip tải package.
-
-Cách xử lý:
+Lỗi do mạng khi pip tải package.
 
 ```powershell
 $env:PIP_INDEX_URL="https://pypi.tuna.tsinghua.edu.cn/simple"
@@ -369,19 +394,17 @@ docker compose --progress=plain build frontend --no-cache
 docker compose up --build
 ```
 
-### 11.2. Backend trả `DEADLINE_EXCEEDED`
+### Backend trả `DEADLINE_EXCEEDED`
 
 Nguyên nhân thường gặp: intent-service gọi Ollama chậm hơn timeout gRPC của backend.
 
-Cách xử lý nhanh:
-
-- Restart backend:
+Cách xử lý:
 
 ```powershell
 docker compose restart backend
 ```
 
-- Nếu vẫn lỗi, tăng timeout trong `docker-compose.yml`:
+Nếu vẫn lỗi, tăng timeout trong `docker-compose.yml`:
 
 ```yaml
 GRPC_TIMEOUT_SECONDS: "30"
@@ -395,7 +418,7 @@ docker compose down
 docker compose up --build --force-recreate
 ```
 
-### 11.3. Không truy cập được web
+### Không truy cập được web
 
 Dùng:
 
@@ -416,19 +439,14 @@ Kiểm tra container:
 docker compose ps
 ```
 
-### 11.4. PowerShell báo JSON invalid
+### PowerShell báo JSON invalid
 
 Dùng `Invoke-RestMethod` thay vì `curl.exe -d`.
 
-### 11.5. Port bị chiếm
+### Port bị chiếm
 
 ```powershell
 netstat -ano | findstr :8501
 netstat -ano | findstr :8000
-```
-
-Dừng container cũ:
-
-```powershell
 docker compose down
 ```
